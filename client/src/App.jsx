@@ -1002,6 +1002,13 @@ export default function App() {
   const logout = () => { setToken(null); setUser(null); setNeedChange(false); setHotelId(null); setPdv(null); setAdminView(null); };
 
   const addHotel = async () => { if (!newHotel.trim()) return; try { await api.createHotel(newHotel.trim()); setNewHotel(""); setHotels(await api.listHotels()); } catch (e) { flash(e.message); } };
+  const removeHotel = async (h) => {
+    const pw = window.prompt('Para excluir o hotel "' + h.name + '" e TODOS os seus PDVs e lançamentos, digite a senha de administrador:');
+    if (pw == null) return;
+    try { await api.login(user.login, pw); } catch { alert("Senha incorreta. O hotel não foi excluído."); return; }
+    if (!window.confirm('Confirma excluir definitivamente "' + h.name + '"? Esta ação remove todos os PDVs, produtos e lançamentos do hotel e não pode ser desfeita.')) return;
+    try { await api.deleteHotel(h.id); setHotels(await api.listHotels()); flash("Hotel excluído"); } catch (e) { flash(e.message); }
+  };
   const addPdv = async () => { if (!newPdv.trim() || !hotelId) return; try { await api.createPdv(hotelId, newPdv.trim()); setNewPdv(""); setPdvs(await api.listPdvs(hotelId)); } catch (e) { flash(e.message); } };
   const removePdv = async (id) => { if (window.confirm("Remover este PDV? Os lançamentos dele serão apagados.")) { try { await api.deletePdv(id); setPdvs(await api.listPdvs(hotelId)); } catch (e) { flash(e.message); } } };
 
@@ -1066,6 +1073,7 @@ export default function App() {
       {hotels.map((h) => (
         <div className="pdvitem" key={h.id}>
           <div className="grow"><div className="pdv-n">{h.name}</div></div>
+          {can.manageHotels(user) && <button className="ghost danger" onClick={() => removeHotel(h)}>remover</button>}
           <button className="primary" onClick={() => setHotelId(h.id)}>Abrir</button>
         </div>
       ))}
