@@ -1,0 +1,25 @@
+# Deploy 1-clique no Render.com (https://render.com)
+services:
+  - type: web
+    name: par-stock
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_PATH
+        value: /var/data/parstock.db
+      - key: SEED_ADMIN_LOGIN
+        value: admin
+      - key: SEED_ADMIN_PASSWORD
+        value: rafa1411
+      - key: TOKEN_TTL
+        value: 12h
+    disk:
+      name: parstock-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:-troque-este-segredo}
+      - DATABASE_PATH=/app/data/parstock.db
+      - SEED_ADMIN_LOGIN=${SEED_ADMIN_LOGIN:-admin}
+      - SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-rafa1411}
+      - TOKEN_TTL=${TOKEN_TTL:-12h}
+    volumes:
+      - parstock-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  parstock-data:
