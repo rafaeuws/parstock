@@ -8,7 +8,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { seedAdmin } from "./db.js";
+import { initSchema, seedAdmin } from "./db.js";
 import authRoutes from "./routes/auth.js";
 import usersRoutes from "./routes/users.js";
 import catalogRoutes from "./routes/catalog.js";
@@ -17,7 +17,8 @@ import daysRoutes from "./routes/days.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 
-seedAdmin();
+await initSchema();
+await seedAdmin();
 
 const app = express();
 app.set("trust proxy", 1);

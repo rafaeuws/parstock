@@ -1,18 +1,29 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=parstock
+      - POSTGRES_PASSWORD=parstock
+      - POSTGRES_DB=parstock
+    volumes:
+      - parstock-pg:/var/lib/postgresql/data
+    restart: unless-stopped
+
   app:
     build: .
+    depends_on:
+      - db
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
+      - DATABASE_URL=postgresql://parstock:parstock@db:5432/parstock
+      - DATABASE_SSL=disable
       - JWT_SECRET=${JWT_SECRET:-troque-este-segredo}
-      - DATABASE_PATH=/app/data/parstock.db
       - SEED_ADMIN_LOGIN=${SEED_ADMIN_LOGIN:-admin}
       - SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-rafa1411}
       - TOKEN_TTL=${TOKEN_TTL:-12h}
-    volumes:
-      - parstock-data:/app/data
     restart: unless-stopped
 
 volumes:
-  parstock-data:
+  parstock-pg:

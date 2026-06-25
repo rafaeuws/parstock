@@ -69,47 +69,59 @@ Sobe a API (porta 3000) e o Vite (porta 5173, com proxy para `/api`). Acesse `ht
 
 ## Deploy
 
-### Opção A — Render.com (mais simples, com banco persistente)
+> **Persistência (importante):** em provedores de nuvem, o sistema de arquivos do contêiner é
+> **efêmero** — ele é apagado a cada deploy/reinício. Por isso, em produção use **PostgreSQL**
+> (banco gerenciado que persiste os dados). Basta definir a variável `DATABASE_URL`. Sem ela,
+> o sistema cai no SQLite local, adequado apenas para desenvolvimento.
+
+### Opção A — Render.com com PostgreSQL (recomendado)
 
 1. Suba este repositório no GitHub.
-2. No Render, crie um serviço a partir do repositório — o arquivo `render.yaml` já define tudo
-   (build, start, disco persistente em `/var/data` e `JWT_SECRET` gerado automaticamente).
-3. Após o deploy, acesse a URL e entre com `admin` / `rafa1411`.
+2. No Render: **New → Blueprint** e aponte para o repositório. O arquivo `render.yaml` já cria:
+   - um banco **PostgreSQL** gerenciado (`par-stock-db`);
+   - o **Web Service**, com `DATABASE_URL` ligado automaticamente ao banco e `JWT_SECRET` gerado.
+3. Aguarde o deploy e acesse a URL. Entre com `admin` / `rafa1411` e troque a senha.
 
-### Opção B — Docker / Docker Compose
+Se preferir criar manualmente (sem o Blueprint):
+- Crie primeiro um **PostgreSQL** (New → PostgreSQL) e copie a *Internal Connection String*.
+- Crie um **Web Service** a partir do repositório:
+  - Build Command: `npm install && npm run build`
+  - Start Command: `npm start`
+  - Em **Environment**, adicione `DATABASE_URL` (cole a connection string), e um `JWT_SECRET` forte.
+
+> Bancos como **Neon** (neon.tech) e **Supabase** também funcionam: crie o Postgres lá, copie a
+> connection string e coloque em `DATABASE_URL`. O SSL é ativado automaticamente.
+
+### Opção B — Docker / Docker Compose (Postgres incluso)
 
 ```bash
-# defina um segredo e suba
 JWT_SECRET=$(openssl rand -hex 32) docker compose up -d --build
 ```
-Os dados ficam no volume `parstock-data`. A aplicação fica em `http://localhost:3000`.
+O `docker-compose.yml` sobe a aplicação **e** um Postgres com volume persistente.
 
-### Opção C — VPS (PM2)
+### Opção C — VPS (PM2 + Postgres)
 
 ```bash
 npm install && npm run build
-JWT_SECRET=... DATABASE_PATH=/var/lib/parstock/parstock.db pm2 start npm --name par-stock -- start
+DATABASE_URL=postgresql://user:senha@localhost:5432/parstock JWT_SECRET=... pm2 start npm --name par-stock -- start
 ```
-Coloque um Nginx na frente com HTTPS (Let's Encrypt).
+Coloque um Nginx na frente com HTTPS.
 
-> **Persistência:** os dados ficam no arquivo apontado por `DATABASE_PATH`. Em plataformas com
-> sistema de arquivos efêmero, garanta um **disco/volume persistente** (Render Disk, Railway Volume,
-> Fly Volume, ou um diretório do VPS). Faça backups periódicos do arquivo `.db` (ou use a exportação
-> por PDV dentro do sistema).
-
----
+> **Por que meus dados sumiram no Render?** Se o serviço rodar com SQLite no disco do contêiner
+> (sem `DATABASE_URL` e sem disco persistente), todo deploy/reinício recria um disco vazio e os
+> dados se perdem — e no plano Free do Render discos persistentes não estão disponíveis. A solução
+> é usar `DATABASE_URL` (PostgreSQL), como descrito acima. Defina também `JWT_SECRET` fixo para as
+> sessões continuarem válidas após reiniciar.
 
 ## Banco de dados
 
-Usa **SQLite** por padrão (arquivo único, ACID, sem servidor externo). A aplicação tenta usar
-`better-sqlite3` (recomendado) e, caso ele não esteja disponível no ambiente, recorre ao
-SQLite embutido no Node (`node:sqlite`, Node 22.5+) — neste caso rode com
-`node --experimental-sqlite server/index.js`.
+- **Produção:** defina `DATABASE_URL` (PostgreSQL). As tabelas são criadas automaticamente no
+  primeiro start e os dados persistem entre deploys/reinícios.
+- **Local:** sem `DATABASE_URL`, usa **SQLite** (`better-sqlite3`, ou o SQLite embutido do Node —
+  neste caso rode com `npm run start:builtin`).
 
 Estrutura: `users`, `hotels`, `pdvs`, `products` (1 linha por PDV) e `days` (1 linha por PDV/data,
-com status de validação). As tabelas são criadas automaticamente no primeiro start.
-
----
+com status de validação). Todas as queries são compatíveis com Postgres e SQLite.
 
 ## Segurança
 
