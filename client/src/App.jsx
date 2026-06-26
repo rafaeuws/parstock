@@ -2,6 +2,34 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { api, setToken, getToken } from "./api.js";
 import * as XLSX from "xlsx";
 
+// aplica o tema salvo (ou o do sistema) antes do React renderizar, evitando flash
+(function initTheme() {
+  try {
+    const saved = localStorage.getItem("parstock.theme");
+    const sys = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = saved || sys;
+  } catch { document.documentElement.dataset.theme = "light"; }
+})();
+
+function ThemeToggle() {
+  const [theme, setTheme] = useState(() => (typeof document !== "undefined" && document.documentElement.dataset.theme) || "light");
+  const toggle = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    const html = document.documentElement;
+    html.classList.add("theme-anim");
+    html.dataset.theme = next;
+    try { localStorage.setItem("parstock.theme", next); } catch {}
+    setTheme(next);
+    window.setTimeout(() => html.classList.remove("theme-anim"), 480);
+  };
+  const dark = theme === "dark";
+  return (
+    <button className="themebtn" onClick={toggle} title={dark ? "Modo claro" : "Modo escuro"} aria-label="Alternar modo claro/escuro">
+      <span className="themeicon" key={theme}>{dark ? "\u2600" : "\u263E"}</span>
+    </button>
+  );
+}
+
 /* ============ PROTEÇÃO: evita tela branca se uma seção falhar ============ */
 class Boundary extends React.Component {
   constructor(p) { super(p); this.state = { err: null }; }
@@ -242,6 +270,7 @@ function Workspace({ user, pdv, hotelName, onExit, openHelp, onLogout }) {
               <div className="who"><span className="who-n">{user.name}</span><span className="who-r">{roleLabel(user.role)}</span></div>
               <button className="switchbtn" onClick={onExit}>Trocar PDV</button>
               <button className="switchbtn" onClick={onLogout} title="Sair da conta">Sair</button>
+              <ThemeToggle />
               <button className="helpbtn" onClick={openHelp} title="Dúvidas e suporte">?</button>
             </div>
           </div>
@@ -730,18 +759,6 @@ function Produtos({ products, saveProducts }) {
     XLSX.writeFile(wb, "modelo-produtos.xlsx");
   };
 
-  // exporta os produtos atuais para Excel (mesmo layout: A=produto, B=mínimo, C=valor, D=unidade)
-  const exportarExcel = () => {
-    const ordenados = products.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR", { sensitivity: "base" }));
-    const aoa = [["Produto", "Estoque mínimo", "Valor (R$)", "Unidade"]];
-    ordenados.forEach((p) => aoa.push([p.name, num(p.par), num(p.price), p.unit || "UN"]));
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = [{ wch: 32 }, { wch: 16 }, { wch: 12 }, { wch: 10 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Produtos");
-    XLSX.writeFile(wb, "produtos.xlsx");
-  };
-
   // lê o Excel: coluna A = produto, B = estoque mínimo, C = valor
   const importarExcel = async (file) => {
     setImporting(true);
@@ -799,7 +816,6 @@ function Produtos({ products, saveProducts }) {
               onChange={(e) => { if (e.target.files && e.target.files[0]) importarExcel(e.target.files[0]); e.target.value = ""; }} />
           </label>
           <button className="ghost self-end" onClick={baixarModelo}>Baixar modelo</button>
-          <button className="ghost self-end" disabled={!products.length} onClick={exportarExcel}>Exportar produtos (Excel)</button>
         </div>
       </div>
       {products.length === 0 && (
@@ -920,6 +936,7 @@ function Shell({ children, user, onLogout, openHelp, crumbs }) {
           <div className="hdr-actions">
             {user && <div className="who dark"><span className="who-n">{user.name}</span><span className="who-r">{roleLabel(user.role)}</span></div>}
             {user && <button className="switchbtn dark" onClick={onLogout}>Sair</button>}
+            <ThemeToggle />
             <button className="helpbtn green" onClick={openHelp} title="Dúvidas e suporte">?</button>
           </div>
         </div>
@@ -1399,6 +1416,77 @@ button{transition:background .16s ease,color .16s ease,border-color .16s ease,tr
 .chain-step{transition:transform .18s ease,border-color .18s ease}
 .chain-step:hover{transform:translateY(-2px);border-color:#c8d2cb}
 @media (prefers-reduced-motion: reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+
+/* ===================== MODO ESCURO ===================== */
+:root{color-scheme:light}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#0e1513; --card:#161f1d; --ink:#e9efeb; --dim:#93a39c; --line:#27332f;
+  --green:#2caa8a; --green-d:#49cba9; --amber:#e3a740; --amber-bg:#33290f;
+  --red:#e07063; --red-bg:#371e1b; --green-bg:#16302a;
+}
+/* botão de alternância de tema */
+.themebtn{width:32px;height:32px;border-radius:50%;border:1px solid rgba(150,167,160,.45);background:transparent;color:inherit;font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden}
+.themebtn:hover{border-color:var(--amber)}
+.hdr .themebtn{color:#cfe0d9}
+.themeicon{display:inline-block;animation:themeSpin .42s ease}
+@keyframes themeSpin{from{opacity:0;transform:rotate(-120deg) scale(.5)}to{opacity:1;transform:none}}
+/* transição suave apenas no instante da troca de tema */
+html.theme-anim, html.theme-anim *{transition:background-color .42s ease, color .35s ease, border-color .42s ease, fill .35s ease, stroke .35s ease !important}
+@media (prefers-reduced-motion: reduce){html.theme-anim, html.theme-anim *{transition:none!important}}
+
+/* superfícies claras fixas → escuras */
+[data-theme="dark"] .boot{background:var(--paper)}
+[data-theme="dark"] .bootcard{background:var(--card);color:var(--dim);border-color:var(--line)}
+[data-theme="dark"] .sticky{background:var(--card)}
+[data-theme="dark"] .tbl th{background:#101917}
+[data-theme="dark"] .tbl th.sticky{background:#101917}
+[data-theme="dark"] .tbl td{border-bottom-color:var(--line)}
+[data-theme="dark"] .tbl tr:last-child td{border-bottom:none}
+[data-theme="dark"] .rowdone td{background:#13211e}
+[data-theme="dark"] .ninp{background:#111c19;color:var(--ink)}
+[data-theme="dark"] .ninp:focus{background:#16221f}
+[data-theme="dark"] .jinp{background:#111c19}
+[data-theme="dark"] .tinp,[data-theme="dark"] .dinp,[data-theme="dark"] select.tinp{background:#111c19;color:var(--ink)}
+[data-theme="dark"] .ninp:disabled,[data-theme="dark"] .tinp:disabled,[data-theme="dark"] .dinp:disabled{background:#0c1311;color:#5d6b66;-webkit-text-fill-color:#5d6b66}
+[data-theme="dark"] .ninp::placeholder,[data-theme="dark"] .tinp::placeholder{color:#5e6c66}
+[data-theme="dark"] .ghost{background:var(--card);color:var(--ink)}
+[data-theme="dark"] .chip{background:var(--card)}
+[data-theme="dark"] .chip.on{background:var(--green);border-color:var(--green);color:#06140f}
+[data-theme="dark"] .histhead{background:var(--card)}
+[data-theme="dark"] .histhead:hover{background:#1b2522}
+[data-theme="dark"] .modal{background:var(--card)}
+[data-theme="dark"] .pdvitem{background:var(--card)}
+[data-theme="dark"] .sel-bar{background:var(--card)}
+[data-theme="dark"] .sel .helpbtn,[data-theme="dark"] .helpbtn.green{background:var(--card)}
+[data-theme="dark"] .chain-step{background:#13201d}
+[data-theme="dark"] .totrow td{background:#13201d}
+[data-theme="dark"] .rank-bar{background:#22302c}
+[data-theme="dark"] .inph{background:#2a2410!important}
+[data-theme="dark"] .contact a:hover,[data-theme="dark"] .ghost:hover{border-color:var(--green);color:var(--green)}
+
+/* superfícies que sempre ficam escuras (usavam var(--ink) como fundo) */
+[data-theme="dark"] .hdr{background:#0a0f0e}
+[data-theme="dark"] .foot{background:#0a0f0e}
+[data-theme="dark"] .savebar{background:#0a0f0e}
+[data-theme="dark"] .sel .primary{background:var(--green)}
+[data-theme="dark"] .sel .primary:hover{background:var(--green-d)}
+
+/* avisos / status com texto legível no escuro */
+[data-theme="dark"] .warn{color:#e6b75f}
+[data-theme="dark"] .robar{background:#15252b;border-color:#264049;color:#a9c6d2}
+[data-theme="dark"] .statusbar.pend{color:#e6b75f}
+[data-theme="dark"] .sbadge.pend,[data-theme="dark"] .tag-a{color:#e9bd6a}
+[data-theme="dark"] .sbadge.dim{background:#22302c;color:var(--dim)}
+
+/* gráfico (SVG) adaptado ao escuro */
+[data-theme="dark"] .barsvg line{stroke:#26322e}
+[data-theme="dark"] .barsvg text{fill:#93a39c}
+
+/* sombras mais suaves no escuro */
+[data-theme="dark"] .kpi:hover,[data-theme="dark"] .pdvitem:hover,[data-theme="dark"] .chain-step:hover{box-shadow:0 6px 16px rgba(0,0,0,.4)}
+[data-theme="dark"] .savebar,[data-theme="dark"] .toast,[data-theme="dark"] .modal{box-shadow:0 10px 30px rgba(0,0,0,.5)}
+
 
 /* ---- contas, papéis, validação ---- */
 .who{display:flex;flex-direction:column;line-height:1.1;text-align:right;margin-right:2px}
