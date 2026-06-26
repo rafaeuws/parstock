@@ -718,16 +718,28 @@ function Produtos({ products, saveProducts }) {
   // baixa um modelo de planilha pronto para preencher
   const baixarModelo = () => {
     const aoa = [
-      ["Produto", "Estoque mínimo", "Valor (R$)"],
-      ["Água com gás 500ml", 10, 6.5],
-      ["Cerveja long neck", 8, 9],
-      ["Refrigerante lata", 12, 7],
+      ["Produto", "Estoque mínimo", "Valor (R$)", "Unidade"],
+      ["Água com gás 500ml", 10, 6.5, "UN"],
+      ["Cerveja long neck", 8, 9, "GF"],
+      ["Refrigerante lata", 12, 7, "LA"],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = [{ wch: 32 }, { wch: 16 }, { wch: 12 }];
+    ws["!cols"] = [{ wch: 32 }, { wch: 16 }, { wch: 12 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Produtos");
     XLSX.writeFile(wb, "modelo-produtos.xlsx");
+  };
+
+  // exporta os produtos atuais para Excel (mesmo layout: A=produto, B=mínimo, C=valor, D=unidade)
+  const exportarExcel = () => {
+    const ordenados = products.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR", { sensitivity: "base" }));
+    const aoa = [["Produto", "Estoque mínimo", "Valor (R$)", "Unidade"]];
+    ordenados.forEach((p) => aoa.push([p.name, num(p.par), num(p.price), p.unit || "UN"]));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 32 }, { wch: 16 }, { wch: 12 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Produtos");
+    XLSX.writeFile(wb, "produtos.xlsx");
   };
 
   // lê o Excel: coluna A = produto, B = estoque mínimo, C = valor
@@ -744,17 +756,18 @@ function Produtos({ products, saveProducts }) {
         if (!name) return;
         const par = toNum(r[1]);
         const price = toNum(r[2]);
+        const unit = (r[3] != null ? String(r[3]).trim().toUpperCase() : "");
         // pula uma eventual linha de cabeçalho (texto nas colunas B e C)
         if (i === 0 && Number.isNaN(par) && Number.isNaN(price)) return;
-        parsed.push({ name, par: Number.isNaN(par) ? 0 : Math.max(0, Math.round(par)), price: Number.isNaN(price) ? 0 : Math.max(0, price) });
+        parsed.push({ name, unit, par: Number.isNaN(par) ? 0 : Math.max(0, Math.round(par)), price: Number.isNaN(price) ? 0 : Math.max(0, price) });
       });
-      if (!parsed.length) { alert("Não encontrei produtos na planilha. Confira se a coluna A tem o nome, a B o estoque mínimo e a C o valor."); return; }
+      if (!parsed.length) { alert("Não encontrei produtos na planilha. Confira se a coluna A tem o nome, a B o estoque mínimo, a C o valor e a D a unidade."); return; }
       const byName = new Map(products.map((p) => [p.name.trim().toLowerCase(), { ...p }]));
       let added = 0, updated = 0;
       parsed.forEach((it) => {
         const key = it.name.toLowerCase();
-        if (byName.has(key)) { const ex = byName.get(key); ex.par = it.par; ex.price = it.price; updated++; }
-        else { byName.set(key, { id: uid(), name: it.name, unit: "UN", par: it.par, price: it.price }); added++; }
+        if (byName.has(key)) { const ex = byName.get(key); ex.par = it.par; ex.price = it.price; if (it.unit) ex.unit = it.unit; updated++; }
+        else { byName.set(key, { id: uid(), name: it.name, unit: it.unit || "UN", par: it.par, price: it.price }); added++; }
       });
       await saveProducts([...byName.values()]);
       alert("Importação concluída: " + added + " produto(s) adicionado(s) e " + updated + " atualizado(s).");
@@ -779,13 +792,14 @@ function Produtos({ products, saveProducts }) {
       </div>
       <div className="card">
         <div className="card-t">Importar do Excel</div>
-        <p className="hint" style={{ margin: "0 0 10px" }}>Envie uma planilha com <b>coluna A = produto</b>, <b>coluna B = estoque mínimo</b> e <b>coluna C = valor (R$)</b>. Produtos com nome já existente são atualizados; os novos são adicionados.</p>
+        <p className="hint" style={{ margin: "0 0 10px" }}>Envie uma planilha com <b>coluna A = produto</b>, <b>coluna B = estoque mínimo</b>, <b>coluna C = valor (R$)</b> e <b>coluna D = unidade</b> (opcional; ex.: UN, GF, LA). Produtos com nome já existente são atualizados; os novos são adicionados.</p>
         <div className="row wrap gap">
           <label className={"primary self-end filebtn" + (importing ? " disabled" : "")}>{importing ? "Importando…" : "Importar do Excel"}
             <input type="file" accept=".xlsx,.xls,.csv" disabled={importing} style={{ display: "none" }}
               onChange={(e) => { if (e.target.files && e.target.files[0]) importarExcel(e.target.files[0]); e.target.value = ""; }} />
           </label>
           <button className="ghost self-end" onClick={baixarModelo}>Baixar modelo</button>
+          <button className="ghost self-end" disabled={!products.length} onClick={exportarExcel}>Exportar produtos (Excel)</button>
         </div>
       </div>
       {products.length === 0 && (
