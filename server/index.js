@@ -8,7 +8,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { initSchema, seedAdmin } from "./db.js";
+import { db, initSchema, seedAdmin } from "./db.js";
 import authRoutes from "./routes/auth.js";
 import usersRoutes from "./routes/users.js";
 import catalogRoutes from "./routes/catalog.js";
@@ -17,6 +17,13 @@ import daysRoutes from "./routes/days.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 
+if (!process.env.DATABASE_URL) {
+  console.warn("=".repeat(72));
+  console.warn("[ATENÇÃO] Sem DATABASE_URL — usando SQLite em arquivo local.");
+  console.warn("Em nuvem (Render/Railway/etc.) o disco é efêmero: os DADOS SERÃO PERDIDOS");
+  console.warn("quando o serviço reiniciar ou dormir. Defina DATABASE_URL (PostgreSQL).");
+  console.warn("=".repeat(72));
+}
 await initSchema();
 await seedAdmin();
 
@@ -34,7 +41,7 @@ const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHead
   message: { error: "Muitas tentativas. Tente novamente em alguns minutos." } });
 app.use("/api/login", loginLimiter);
 
-app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+app.get("/api/health", (req, res) => res.json({ ok: true, db: db.kind, time: new Date().toISOString() }));
 app.use("/api", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api", catalogRoutes);
