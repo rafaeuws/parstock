@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { api, setToken, getToken } from "./api.js";
+import * as XLSX from "xlsx";
 
 /* ============ PROTEÇÃO: evita tela branca se uma seção falhar ============ */
 class Boundary extends React.Component {
@@ -698,10 +699,71 @@ function Historico({ products, index, months, ensureMonths, getDay, prevOf, go, 
 function Produtos({ products, saveProducts }) {
   const [q, setQ] = useState("");
   const [nv, setNv] = useState({ name: "", unit: "UN", par: "", price: "" });
+  const [importing, setImporting] = useState(false);
   const list = products.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
   const up = (id, f, v) => saveProducts(products.map((p) => (p.id === id ? { ...p, [f]: f === "par" || f === "price" ? num(v) : v } : p)));
   const del = (id) => { const p = products.find((x) => x.id === id); if (window.confirm('Excluir "' + p.name + '"? O histórico de dias já salvos não é alterado.')) saveProducts(products.filter((x) => x.id !== id)); };
   const add = () => { if (!nv.name.trim()) return; saveProducts([...products, { id: uid(), name: nv.name.trim(), unit: nv.unit.trim() || "UN", par: num(nv.par), price: num(nv.price) }]); setNv({ name: "", unit: "UN", par: "", price: "" }); };
+
+  // converte texto/numero (aceita formato BR "1.234,56") para número
+  const toNum = (v) => {
+    if (typeof v === "number") return v;
+    if (v == null) return NaN;
+    let t = String(v).trim().replace(/r\$/i, "").replace(/\s/g, "");
+    if (t.includes(",") && t.includes(".")) t = t.replace(/\./g, "").replace(",", ".");
+    else if (t.includes(",")) t = t.replace(",", ".");
+    return Number(t);
+  };
+
+  // baixa um modelo de planilha pronto para preencher
+  const baixarModelo = () => {
+    const aoa = [
+      ["Produto", "Estoque mínimo", "Valor (R$)"],
+      ["Água com gás 500ml", 10, 6.5],
+      ["Cerveja long neck", 8, 9],
+      ["Refrigerante lata", 12, 7],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 32 }, { wch: 16 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Produtos");
+    XLSX.writeFile(wb, "modelo-produtos.xlsx");
+  };
+
+  // lê o Excel: coluna A = produto, B = estoque mínimo, C = valor
+  const importarExcel = async (file) => {
+    setImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+      const parsed = [];
+      rows.forEach((r, i) => {
+        const name = (r && r[0] != null ? String(r[0]) : "").trim();
+        if (!name) return;
+        const par = toNum(r[1]);
+        const price = toNum(r[2]);
+        // pula uma eventual linha de cabeçalho (texto nas colunas B e C)
+        if (i === 0 && Number.isNaN(par) && Number.isNaN(price)) return;
+        parsed.push({ name, par: Number.isNaN(par) ? 0 : Math.max(0, Math.round(par)), price: Number.isNaN(price) ? 0 : Math.max(0, price) });
+      });
+      if (!parsed.length) { alert("Não encontrei produtos na planilha. Confira se a coluna A tem o nome, a B o estoque mínimo e a C o valor."); return; }
+      const byName = new Map(products.map((p) => [p.name.trim().toLowerCase(), { ...p }]));
+      let added = 0, updated = 0;
+      parsed.forEach((it) => {
+        const key = it.name.toLowerCase();
+        if (byName.has(key)) { const ex = byName.get(key); ex.par = it.par; ex.price = it.price; updated++; }
+        else { byName.set(key, { id: uid(), name: it.name, unit: "UN", par: it.par, price: it.price }); added++; }
+      });
+      await saveProducts([...byName.values()]);
+      alert("Importação concluída: " + added + " produto(s) adicionado(s) e " + updated + " atualizado(s).");
+    } catch (e) {
+      alert("Não foi possível ler a planilha: " + (e.message || e));
+    } finally {
+      setImporting(false);
+    }
+  };
   return (
     <section>
       <div className="row between wrap"><h2>Produtos</h2><label className="fld">Buscar<input className="tinp" value={q} onChange={(e) => setQ(e.target.value)} placeholder="filtrar…" /></label></div>
@@ -713,6 +775,17 @@ function Produtos({ products, saveProducts }) {
           <label className="fld">Estoque mínimo<NumInput value={nv.par} onChange={(v) => setNv({ ...nv, par: v })} w={90} /></label>
           <label className="fld">Valor (R$)<PriceInput value={nv.price} onChange={(v) => setNv({ ...nv, price: v })} /></label>
           <button className="primary self-end" onClick={add}>Adicionar</button>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-t">Importar do Excel</div>
+        <p className="hint" style={{ margin: "0 0 10px" }}>Envie uma planilha com <b>coluna A = produto</b>, <b>coluna B = estoque mínimo</b> e <b>coluna C = valor (R$)</b>. Produtos com nome já existente são atualizados; os novos são adicionados.</p>
+        <div className="row wrap gap">
+          <label className={"primary self-end filebtn" + (importing ? " disabled" : "")}>{importing ? "Importando…" : "Importar do Excel"}
+            <input type="file" accept=".xlsx,.xls,.csv" disabled={importing} style={{ display: "none" }}
+              onChange={(e) => { if (e.target.files && e.target.files[0]) importarExcel(e.target.files[0]); e.target.value = ""; }} />
+          </label>
+          <button className="ghost self-end" onClick={baixarModelo}>Baixar modelo</button>
         </div>
       </div>
       {products.length === 0 && (
@@ -1250,6 +1323,8 @@ button{cursor:pointer}
 .foot a{color:var(--amber);text-decoration:none;font-weight:600}
 .foot b{color:#e8ecea}
 .filebtn{display:inline-flex;align-items:center;cursor:pointer}
+.filebtn.disabled{opacity:.6;pointer-events:none}
+label.primary.filebtn{color:#fff}
 .modal-ov{position:fixed;inset:0;background:rgba(20,35,35,.55);display:flex;align-items:center;justify-content:center;z-index:90;padding:16px}
 .modal{background:#fff;border-radius:14px;max-width:380px;width:100%;padding:20px;position:relative;font:14px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--ink)}
 .modal-x{position:absolute;top:8px;right:12px;background:none;border:none;font-size:22px;color:var(--dim);cursor:pointer}
